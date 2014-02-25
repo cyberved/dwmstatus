@@ -1,4 +1,9 @@
 #define _BSD_SOURCE
+
+#define BATT_NOW "/sys/class/power_supply/BAT0/energy_now"
+#define BATT_FULL "/sys/class/power_supply/BAT0/energy_full"
+#define BATT_STATUS "/sys/class/power_supply/BAT0/status"
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,9 +17,7 @@
 
 #include <X11/Xlib.h>
 
-char *tzargentina = "America/Buenos_Aires";
-char *tzutc = "UTC";
-char *tzberlin = "Europe/Berlin";
+char *tzshanghai = "Asia/Shanghai";
 
 static Display *dpy;
 
@@ -80,6 +83,36 @@ setstatus(char *str)
 }
 
 char *
+getbattery(void)
+{
+	long bnow = 0;
+	long bfull = 0;
+	char *status = malloc(sizeof(char)*16);
+	char s = '?';
+	FILE *fp = NULL;
+	if ((fp = fopen(BATT_NOW, "r"))) {
+		fscanf(fp, "%ld\n", &bnow);
+		fclose(fp);
+		fp = fopen(BATT_FULL, "r");
+		fscanf(fp, "%ld\n", &bfull);
+		fclose(fp);
+		fp = fopen(BATT_STATUS, "r");
+		fscanf(fp, "%s\n", status);
+		fclose(fp);
+		if (strcmp(status, "Charging") == 0)
+			s = '+';
+		else if (strcmp(status, "Discharging") == 0)
+			s = '-';
+		else if (strcmp(status, "Full") == 0)
+			s = '=';
+		free(status);
+		return smprintf("%c%ld%%", s, (bnow/(bfull/100)));
+	}
+	free(status);
+	return smprintf("%c", s);
+}
+
+char *
 loadavg(void)
 {
 	double avgs[3];
@@ -97,28 +130,25 @@ main(void)
 {
 	char *status;
 	char *avgs;
-	char *tmar;
-	char *tmutc;
-	char *tmbln;
+	char *batt;
+	char *tmsh;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
 		return 1;
 	}
 
-	for (;;sleep(90)) {
+	for (;;sleep(30)) {
 		avgs = loadavg();
-		tmar = mktimes("%H:%M", tzargentina);
-		tmutc = mktimes("%H:%M", tzutc);
-		tmbln = mktimes("KW %W %a %d %b %H:%M %Z %Y", tzberlin);
+		batt = getbattery();
+		tmsh = mktimes("%W %a %d %b %H:%M %Z %Y", tzshanghai);
 
-		status = smprintf("L:%s A:%s U:%s %s",
-				avgs, tmar, tmutc, tmbln);
+		status = smprintf("%s %s %s",
+				  avgs, batt, tmsh);
 		setstatus(status);
 		free(avgs);
-		free(tmar);
-		free(tmutc);
-		free(tmbln);
+		free(batt);
+		free(tmsh);
 		free(status);
 	}
 
